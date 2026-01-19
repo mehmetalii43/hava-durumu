@@ -1,4 +1,4 @@
-const apiKey = "6d6fa693fd67581b9fb1dbbb4bf4b15b";
+const apiKey = "2202dbe94418376ff3b3e1cb2db16d5b";
 
 const backgroundMap = {
     Clear: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1350&q=80",
