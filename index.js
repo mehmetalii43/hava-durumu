@@ -1,80 +1,62 @@
-const apiKey = "2202dbe94418376ff3b3e1cb2db16d5b";
-
-const backgroundMap = {
-    Clear: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1350&q=80",
-    Rain: "https://images.unsplash.com/photo-1527766833261-b09c3163a791?auto=format&fit=crop&w=1350&q=80",
-    Snow: "https://images.unsplash.com/photo-1602810316286-b2d13f9aa92e?auto=format&fit=crop&w=1350&q=80",
-    Clouds: "https://images.unsplash.com/photo-1502082553048-f009c37129b9?auto=format&fit=crop&w=1350&q=80",
-    Thunderstorm: "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?auto=format&fit=crop&w=1350&q=80",
-    Drizzle: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1350&q=80",
-    Mist: "https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0?auto=format&fit=crop&w=1350&q=80",
-};
-
-function getBackgroundImage(mainWeather) {
-    return backgroundMap[mainWeather] || "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1350&q=80";
-}
-
 function getWeather() {
     const city = document.getElementById("cityInput").value.trim();
     const resultDiv = document.getElementById("weatherResult");
     resultDiv.innerHTML = "";
+
     if (!city) {
         resultDiv.innerText = "Lütfen bir şehir adı girin.";
         return;
     }
 
-    // Ana hava durumu için (güncel)
-    fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric&lang=tr`)
-        .then(response => {
-            if (!response.ok) throw new Error("Şehir bulunamadı.");
-            return response.json();
-        })
-        .then(data => {
-            document.body.style.backgroundImage = `url('${getBackgroundImage(data.weather[0].main)}')`;
-
-            resultDiv.innerHTML = `
-        <div class="day-forecast">
-          <strong>Şu An: ${data.name}</strong>
-          Sıcaklık: ${data.main.temp}°C<br>
-          Hava: ${data.weather[0].description}
-        </div>
-      `;
-        })
-        .catch(err => {
-            resultDiv.innerText = "Hata: " + err.message;
-        });
-
-    // 5 günlük tahmin için
-    fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${apiKey}&units=metric&lang=tr`)
-        .then(response => {
-            if (!response.ok) throw new Error("Tahmin verileri alınamadı.");
-            return response.json();
-        })
-        .then(data => {
-            // 5 günlük tahmini saat 12:00 için filtrele
-            const forecastByDay = {};
-            data.list.forEach(item => {
-                if (item.dt_txt.includes("12:00:00")) {
-                    const date = new Date(item.dt * 1000);
-                    const dayName = date.toLocaleDateString("tr-TR", { weekday: "long" });
-                    forecastByDay[dayName] = item;
-                }
-            });
-
-            // Günlük tahminleri ekrana yazdır
-            let forecastHtml = "<h2>5 Günlük Tahmin</h2>";
-            for (const [day, weather] of Object.entries(forecastByDay)) {
-                forecastHtml += `
-          <div class="day-forecast">
-            <strong>${day}</strong>
-            Sıcaklık: ${weather.main.temp}°C<br>
-            Hava: ${weather.weather[0].description}
-          </div>
-        `;
+    // Adım 1 — Şehirden koordinat al
+    fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${city}&language=tr`)
+        .then(response => response.json())
+        .then(geoData => {
+            if (!geoData.results || geoData.results.length === 0) {
+                resultDiv.innerText = "Şehir bulunamadı.";
+                return;
             }
-            resultDiv.innerHTML += forecastHtml;
+
+            const { latitude, longitude, name } = geoData.results[0];
+
+            // Adım 2 — Hava verilerini al
+            fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`)
+                .then(response => response.json())
+                .then(weatherData => {
+                    // Mevcut hava
+                    const current = weatherData.current_weather;
+
+                    resultDiv.innerHTML = `
+                        <div class="day-forecast">
+                            <strong>Şu An: ${name}</strong><br>
+                            Sıcaklık: ${current.temperature}°C<br>
+                            Kod: ${current.weathercode}
+                        </div>
+                        <h2>5 Günlük Tahmin</h2>
+                    `;
+
+                    // 5 günlük tahmin
+                    const days = weatherData.daily.time;
+                    const maxTemps = weatherData.daily.temperature_2m_max;
+                    const minTemps = weatherData.daily.temperature_2m_min;
+                    const codes = weatherData.daily.weathercode;
+
+                    for (let i = 0; i < days.length; i++) {
+                        resultDiv.innerHTML += `
+                            <div class="day-forecast">
+                                <strong>${days[i]}</strong><br>
+                                Max: ${maxTemps[i]}°C<br>
+                                Min: ${minTemps[i]}°C<br>
+                                Kod: ${codes[i]}
+                            </div>
+                        `;
+                    }
+                })
+                .catch(err => {
+                    resultDiv.innerText = "Hava verisi alınamadı.";
+                });
         })
         .catch(err => {
-            resultDiv.innerHTML += "<br>5 günlük tahmin alınamadı.";
+            resultDiv.innerText = "Şehir koordinatları alınamadı.";
         });
 }
